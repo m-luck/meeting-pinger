@@ -1,0 +1,16 @@
+[
+  {
+    "name": "Michael",
+    "slack_user_id": "U01ABCDEF",
+    "google_token_json": "<paste output of make print-token here>",
+    "google_calendar_id": "primary",
+    "confirmation_phrase": "ok"
+  },
+  {
+    "name": "Teammate",
+    "slack_user_id": "U02GHIJKL",
+    "google_token_json": "<they run make auth locally, then make print-token>",
+    "google_calendar_id": "primary",
+    "confirmation_phrase": "ok"
+  }
+]

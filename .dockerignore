@@ -1,0 +1,8 @@
+credentials/
+users.json
+.env
+.venv/
+__pycache__/
+*.pyc
+.git/
+.mypy_cache/

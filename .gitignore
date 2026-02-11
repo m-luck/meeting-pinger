@@ -1,0 +1,8 @@
+.env
+users.json
+credentials/*.json
+!credentials/.gitkeep
+.venv/
+__pycache__/
+*.pyc
+.mypy_cache/
