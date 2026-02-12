@@ -172,7 +172,10 @@ class SlackClient:
             logger.info(f"Sent empty digest ({header}) to {slack_user_id}")
             return
 
-        lines = [f"{preamble}*{header}*\n"]
+        first_time = meetings[0]["start_time"]
+        first_line = f"*Your first meeting is at {first_time}*\n"
+
+        lines = [f"{preamble}{first_line}\n*{header}*\n"]
         for m in meetings:
             lines.append(f"  {m['start_time']} - {m['end_time']}  *{m['summary']}*")
 
