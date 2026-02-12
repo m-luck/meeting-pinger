@@ -33,6 +33,9 @@ class Settings(BaseSettings):
     is_skip_all_day_events: bool = True
     is_skip_declined_events: bool = True
 
+    # Timezone (IANA name) for digest scheduling
+    timezone: str = "America/New_York"
+
     # Server
     port: int = 8080
 

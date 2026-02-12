@@ -146,6 +146,8 @@ class SlackClient:
         slack_user_id: str,
         header: str,
         meetings: List[dict],
+        current_time_str: str = "",
+        target_day: str = "",
     ) -> None:
         """Send a daily digest of meetings to a user.
 
@@ -153,18 +155,24 @@ class SlackClient:
             slack_user_id: The user to DM.
             header: e.g. "Today's meetings" or "Tomorrow's meetings".
             meetings: List of dicts with 'summary', 'start_time', 'end_time'.
+            current_time_str: e.g. "7:20 PM EST" -- the current local time.
+            target_day: e.g. "today (Wednesday)" or "tomorrow (Thursday)".
         """
         channel_id = self._get_dm_channel_id(slack_user_id)
+
+        preamble = ""
+        if current_time_str and target_day:
+            preamble = f"_It is {current_time_str}. Showing schedule for {target_day}._\n\n"
 
         if not meetings:
             self._client.chat_postMessage(
                 channel=channel_id,
-                text=f"*{header}*\nNo meetings scheduled.",
+                text=f"{preamble}*{header}*\nNo meetings scheduled.",
             )
             logger.info(f"Sent empty digest ({header}) to {slack_user_id}")
             return
 
-        lines = [f"*{header}*\n"]
+        lines = [f"{preamble}*{header}*\n"]
         for m in meetings:
             lines.append(f"  {m['start_time']} - {m['end_time']}  *{m['summary']}*")
 

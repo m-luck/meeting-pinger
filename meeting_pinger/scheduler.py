@@ -3,6 +3,7 @@ import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from typing import List, Optional, Set
+from zoneinfo import ZoneInfo
 
 from meeting_pinger.calendar_client import CalendarClient
 from meeting_pinger.config import Settings
@@ -130,12 +131,20 @@ class Scheduler:
             except Exception as e:
                 logger.error(f"[{label}] Error in tick: {e}", exc_info=True)
 
+    def _local_now(self) -> datetime:
+        """Get current time in the configured timezone."""
+        tz = ZoneInfo(self._settings.timezone)
+        return datetime.now(tz)
+
     def _check_digests(self, user_state: UserState, now: datetime) -> None:
         """Send morning and evening digests only during the exact target minute."""
-        local_now = now.astimezone()
+        local_now = self._local_now()
         today_key = f"morning-{local_now.strftime('%Y-%m-%d')}"
         tonight_key = f"evening-{local_now.strftime('%Y-%m-%d')}"
         label = user_state.user_config.name or user_state.user_config.slack_user_id
+        tz_abbr = local_now.strftime('%Z')
+
+        time_str = local_now.strftime('%-I:%M %p %Z')
 
         is_morning_window = (
             local_now.hour == MORNING_DIGEST_HOUR and local_now.minute < 2
@@ -148,6 +157,8 @@ class Scheduler:
                     slack_user_id=user_state.user_config.slack_user_id,
                     header=f"Today's meetings ({local_now.strftime('%A, %b %-d')})",
                     meetings=meetings,
+                    current_time_str=time_str,
+                    target_day=f"today ({local_now.strftime('%A')})",
                 )
             except Exception as e:
                 logger.error(f"[{label}] Error sending morning digest: {e}")
@@ -164,6 +175,8 @@ class Scheduler:
                     slack_user_id=user_state.user_config.slack_user_id,
                     header=f"Tomorrow's meetings ({tomorrow.strftime('%A, %b %-d')})",
                     meetings=meetings,
+                    current_time_str=time_str,
+                    target_day=f"tomorrow ({tomorrow.strftime('%A')})",
                 )
             except Exception as e:
                 logger.error(f"[{label}] Error sending evening digest: {e}")
@@ -172,12 +185,15 @@ class Scheduler:
         """On-demand: send today's digest for a specific user."""
         for user_state in self._user_states:
             if user_state.user_config.slack_user_id == slack_user_id:
-                local_now = datetime.now(timezone.utc).astimezone()
+                local_now = self._local_now()
+                time_str = local_now.strftime('%-I:%M %p %Z')
                 meetings = user_state.calendar.get_meetings_for_date(local_now)
                 self._slack.send_digest(
                     slack_user_id=slack_user_id,
                     header=f"Today's meetings ({local_now.strftime('%A, %b %-d')})",
                     meetings=meetings,
+                    current_time_str=time_str,
+                    target_day=f"today ({local_now.strftime('%A')})",
                 )
                 return
 
@@ -185,11 +201,15 @@ class Scheduler:
         """On-demand: send tomorrow's digest for a specific user."""
         for user_state in self._user_states:
             if user_state.user_config.slack_user_id == slack_user_id:
-                tomorrow = datetime.now(timezone.utc).astimezone() + timedelta(days=1)
+                local_now = self._local_now()
+                time_str = local_now.strftime('%-I:%M %p %Z')
+                tomorrow = local_now + timedelta(days=1)
                 meetings = user_state.calendar.get_meetings_for_date(tomorrow)
                 self._slack.send_digest(
                     slack_user_id=slack_user_id,
                     header=f"Tomorrow's meetings ({tomorrow.strftime('%A, %b %-d')})",
                     meetings=meetings,
+                    current_time_str=time_str,
+                    target_day=f"tomorrow ({tomorrow.strftime('%A')})",
                 )
                 return

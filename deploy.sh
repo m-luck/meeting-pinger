@@ -3,7 +3,7 @@ set -euo pipefail
 
 # -- Configuration --
 RESOURCE_GROUP="${AZURE_RESOURCE_GROUP:-meeting-pinger-rg}"
-LOCATION="${AZURE_LOCATION:-eastus}"
+LOCATION="${AZURE_LOCATION:-eastus2}"
 ENVIRONMENT_NAME="meeting-pinger-env"
 APP_NAME="meeting-pinger"
 REGISTRY_NAME="${AZURE_REGISTRY_NAME:-meetingpingercr}"
@@ -26,11 +26,21 @@ for var in "${REQUIRED_VARS[@]}"; do
     fi
 done
 
+# -- Required tags (Azure policy) --
+TAG_CUSTOMER="${AZURE_TAG_CUSTOMER:-shared}"
+TAG_COST_CENTER="${AZURE_TAG_COST_CENTER:-tbd}"
+TAG_OWNER="${AZURE_TAG_OWNER:-everstar ops}"
+TAG_ENVIRONMENT="${AZURE_TAG_ENVIRONMENT:-development}"
+TAG_CREATED_BY="${AZURE_TAG_CREATED_BY:-michael}"
+
 # -- Ensure resource group exists --
 echo "==> Ensuring resource group '${RESOURCE_GROUP}' exists..."
 az group create \
     --name "${RESOURCE_GROUP}" \
     --location "${LOCATION}" \
+    --tags "customer=${TAG_CUSTOMER}" "cost center=${TAG_COST_CENTER}" \
+           "owner=${TAG_OWNER}" "environment=${TAG_ENVIRONMENT}" \
+           "created by=${TAG_CREATED_BY}" \
     --output none
 
 # -- Ensure container registry exists --
@@ -62,11 +72,10 @@ az containerapp env create \
     --location "${LOCATION}" \
     --output none 2>/dev/null || true
 
-# -- Build env vars array --
-ENV_VARS=(
+# -- Plain env vars (no special characters) --
+PLAIN_ENV_VARS=(
     "INTERNAL_TEAM_UTIL_SLACK_BOT_TOKEN=${INTERNAL_TEAM_UTIL_SLACK_BOT_TOKEN}"
     "INTERNAL_TEAM_UTIL_SLACK_APP_TOKEN=${INTERNAL_TEAM_UTIL_SLACK_APP_TOKEN}"
-    "INTERNAL_TEAM_UTIL_USERS_JSON=${INTERNAL_TEAM_UTIL_USERS_JSON}"
     "INTERNAL_TEAM_UTIL_PING_LEAD_TIME_MINUTES=${INTERNAL_TEAM_UTIL_PING_LEAD_TIME_MINUTES:-5}"
     "INTERNAL_TEAM_UTIL_PING_INTERVAL_SECONDS=${INTERNAL_TEAM_UTIL_PING_INTERVAL_SECONDS:-60}"
     "INTERNAL_TEAM_UTIL_POLL_INTERVAL_SECONDS=${INTERNAL_TEAM_UTIL_POLL_INTERVAL_SECONDS:-30}"
@@ -75,28 +84,44 @@ ENV_VARS=(
 
 # -- Deploy or update the container app --
 echo "==> Deploying container app..."
-az containerapp create \
+if az containerapp show --name "${APP_NAME}" --resource-group "${RESOURCE_GROUP}" -o none 2>/dev/null; then
+    az containerapp update \
+        --name "${APP_NAME}" \
+        --resource-group "${RESOURCE_GROUP}" \
+        --image "${IMAGE}" \
+        --min-replicas 1 \
+        --max-replicas 1 \
+        --set-env-vars "${PLAIN_ENV_VARS[@]}" \
+        --output none
+else
+    az containerapp create \
+        --name "${APP_NAME}" \
+        --resource-group "${RESOURCE_GROUP}" \
+        --environment "${ENVIRONMENT_NAME}" \
+        --image "${IMAGE}" \
+        --registry-server "${REGISTRY_SERVER}" \
+        --registry-username "${REGISTRY_USERNAME}" \
+        --registry-password "${REGISTRY_PASSWORD}" \
+        --cpu 0.25 \
+        --memory 0.5Gi \
+        --min-replicas 1 \
+        --max-replicas 1 \
+        --env-vars "${PLAIN_ENV_VARS[@]}" \
+        --output none
+fi
+
+# -- Set USERS_JSON as a secret (contains special characters) --
+echo "==> Setting users config secret..."
+az containerapp secret set \
     --name "${APP_NAME}" \
     --resource-group "${RESOURCE_GROUP}" \
-    --environment "${ENVIRONMENT_NAME}" \
-    --image "${IMAGE}" \
-    --registry-server "${REGISTRY_SERVER}" \
-    --registry-username "${REGISTRY_USERNAME}" \
-    --registry-password "${REGISTRY_PASSWORD}" \
-    --cpu 0.25 \
-    --memory 0.5Gi \
-    --min-replicas 1 \
-    --max-replicas 1 \
-    --ingress none \
-    --env-vars "${ENV_VARS[@]}" \
-    --output none 2>/dev/null || \
+    --secrets "users-json=${INTERNAL_TEAM_UTIL_USERS_JSON}" \
+    --output none
+
 az containerapp update \
     --name "${APP_NAME}" \
     --resource-group "${RESOURCE_GROUP}" \
-    --image "${IMAGE}" \
-    --min-replicas 1 \
-    --max-replicas 1 \
-    --set-env-vars "${ENV_VARS[@]}" \
+    --set-env-vars "INTERNAL_TEAM_UTIL_USERS_JSON=secretref:users-json" \
     --output none
 
 echo "==> Deployed successfully."
